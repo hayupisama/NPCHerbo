@@ -2,7 +2,9 @@
 using Mutagen.Bethesda.Skyrim;
 using NPCHerbo.Generator;
 
-const string GameData = @"C:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data";
+// Dossier Data du jeu : variable d'environnement NPCH_GAME_DATA (définie par tools\build.ps1), sinon chemin Steam par défaut
+var GameData = Environment.GetEnvironmentVariable("NPCH_GAME_DATA")
+               ?? @"C:\Program Files (x86)\Steam\steamapps\common\Skyrim Special Edition\Data";
 var skyrimEsm = Path.Combine(GameData, "Skyrim.esm");
 
 if (args.Length > 0 && args[0] == "explore")

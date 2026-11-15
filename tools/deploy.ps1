@@ -4,6 +4,9 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\config.ps1"
 
 if (-not (Test-Path "$DistDir\NPCHerbo.esp")) { throw "Rien a deployer : lancer d'abord tools\build.ps1" }
+if (-not $MO2ModsDir -or -not (Test-Path $MO2ModsDir)) {
+    throw "Instance Mod Organizer 2 introuvable : renseignez `$ModpackDir dans tools\config.local.ps1 (voir config.local.example.ps1)."
+}
 $target = Join-Path $MO2ModsDir $MO2ModName
 
 if (Get-Process ModOrganizer -ErrorAction SilentlyContinue) {

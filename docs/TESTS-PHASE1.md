@@ -1,3 +1,5 @@
+> Document historique : checklist utilisée pour tester le prototype (phase 1). Certains raccourcis de test qu'il mentionne ont été retirés depuis.
+
 # Test en jeu — Phase 1 (prototype)
 
 Objectif : vérifier que Faelia **apparaît, suit, récolte** et surtout **quelle méthode de cueillette marche** (point le plus risqué du projet).

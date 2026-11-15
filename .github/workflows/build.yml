@@ -1,0 +1,20 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  generator:
+    name: Compilation du générateur (C#)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build
+        run: dotnet build src/NPCHerbo.Generator -c Release
+      # La génération du plugin et la compilation Papyrus demandent les fichiers du jeu (Skyrim.esm,
+      # compilateur du Creation Kit) : elles se font en local avec tools\build.ps1.

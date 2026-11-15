@@ -1,6 +1,14 @@
+# Sorties de build
 build/
 dist/
 bin/
 obj/
+
+# Configuration locale (chemins de votre installation)
+tools/config.local.ps1
+
+# IDE
 *.user
 .vs/
+.vscode/
+.idea/

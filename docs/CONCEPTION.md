@@ -1,6 +1,9 @@
 # NPCHerbo — Faelia, l'herboriste qui te suit
 
-Mod pour **Skyrim SE 1.5.97** (modpack Thana Khan v8.4, MO2, FR).
+> Document de conception d'origine (cahier des charges, architecture et phases), conservé tel qu'il a guidé le développement.
+> L'état actuel du mod est décrit dans le [README](../README.md) et l'[architecture](ARCHITECTURE.md).
+
+Mod pour **Skyrim SE 1.5.97** (gros modpack géré par MO2, jeu en français).
 Faelia est une Bosmer rapide et vive qui te suit partout. Elle récolte les ingrédients d'alchimie autour de toi et les range dans sa besace. Tu peux agrandir la besace en la payant. En combat, elle se met à l'abri.
 
 ---
@@ -30,8 +33,8 @@ Faelia est une Bosmer rapide et vive qui te suit partout. Elle récolte les ingr
 ## 2. Environnement constaté et prérequis
 
 **Déjà en place :**
-- `C:\SteamLibrary\steamapps\common\Skyrim Special Edition` : SkyrimSE.exe 1.5.97, SKSE 1.5.97, `Data\Scripts\Source` (incomplet : 63 fichiers)
-- `C:\Skyrim Thana Khan Modspack v8.4\mods\` :
+- Dossier du jeu : SkyrimSE.exe 1.5.97, SKSE 1.5.97, `Data\Scripts\Source` (incomplet : 63 fichiers)
+- Dossier `mods\` de l'instance MO2 :
   - PapyrusUtil SE, avec ses `.psc`
   - po3 Papyrus Extender, avec ses `.psc`. On utilisera surtout `FindAllReferencesOfFormType` et `IsQuestItem`.
   - SkyUI, NFF, CACO, Fuz Ro D-oh, Base Object Swapper / Seasons, plusieurs mods de flore (Mari's flora, Freak's Floral…)
@@ -44,7 +47,7 @@ Faelia est une Bosmer rapide et vive qui te suit partout. Elle récolte les ingr
 4. Récupérer les **sources Papyrus de SKSE 1.5.97** (archive `skse64_2_00_20` sur skse.silverlock.org, dossier `Data\Scripts\Source`). Le mod `SKSE_Scripts` du modpack ne contient pas de `.psc`.
 5. (Recommandé) **SSEEdit / xEdit**, pour inspecter l'ESP généré.
 6. Dans MO2 : ajouter `CreationKit.exe` comme exécutable, afin que le CK voie les mods du modpack (indispensable pour le visage).
-7. Dans MO2 : **dupliquer le profil** `01 - Écran standard` en `NPCHerbo Test`, avec des sauvegardes propres au profil, pour ne jamais abîmer tes vraies parties.
+7. Dans MO2 : **dupliquer le profil** de jeu habituel en `NPCHerbo Test`, avec des sauvegardes propres au profil, pour ne jamais abîmer tes vraies parties.
 
 ---
 

@@ -15,6 +15,7 @@ Write-Host '== 2/3 Plugin' -ForegroundColor Cyan
 $esp = Join-Path $BuildDir 'NPCHerbo.esp'
 $gen = Join-Path $ProjectRoot 'src\NPCHerbo.Generator'
 $ErrorActionPreference = 'Continue'
+$env:NPCH_GAME_DATA = Join-Path $GameDir 'Data'   # lu par le generateur (Skyrim.esm, archives de voix)
 dotnet run --project $gen -v q -- build $esp 2>&1 | ForEach-Object { "$_" }
 $code = $LASTEXITCODE
 $ErrorActionPreference = 'Stop'
