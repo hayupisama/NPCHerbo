@@ -25,6 +25,8 @@ if (Test-Path $DistDir) { Remove-Item $DistDir -Recurse -Force }
 New-Item -ItemType Directory -Force "$DistDir\Scripts", "$DistDir\Source\Scripts" | Out-Null
 Copy-Item $esp $DistDir
 Copy-Item "$BuildDir\SEQ" "$DistDir\SEQ" -Recurse
+Copy-Item "$BuildDir\MCM" "$DistDir\MCM" -Recurse              # menu MCM (MCM Helper)
+Copy-Item "$BuildDir\Interface" "$DistDir\Interface" -Recurse  # traductions SkyUI
 Copy-Item "$BuildDir\Scripts\NPCH_*.pex", "$BuildDir\Scripts\TIF_NPCH_*.pex" "$DistDir\Scripts"
 Copy-Item "$ModScriptSource\NPCH_*.psc", "$ModScriptSource\TIF_NPCH_*.psc" "$DistDir\Source\Scripts"
 $facegen = Join-Path $ProjectRoot 'assets\facegen'

@@ -12,6 +12,10 @@ Float Property ReachDistance = 200.0 Auto       ; distance a laquelle elle peut 
 Float Property TimeoutBase = 3.0 Auto           ; abandon d'une cible : base + distance x TimeoutPerUnit
 Float Property TimeoutPerUnit = 0.004 Auto      ; soit 1 s par 250 unites
 Float Property TimeoutMax = 15.0 Auto
+Float Property StuckSeconds = 1.5 Auto          ; sans se rapprocher de la plante pendant X s = bloquee
+Float Property StuckProgress = 30.0 Auto        ; rapprochement minimal (unites) pour ne pas etre consideree bloquee
+Int Property MaxUnstickAttempts = 3 Auto        ; tentatives de deblocage avant d'abandonner la plante
+Float Property UnstickStep = 80.0 Auto          ; amplitude du petit saut de cote
 Float Property PlayerExclusion = 150.0 Auto     ; ignore les plantes collees au joueur (il est peut-etre en train de les cueillir)
 Float Property PlayerLeashRatio = 0.65 Auto     ; tournee interrompue si elle est a plus de 65 % de la distance de teleportation
 Float Property MaxHeightDiff = 400.0 Auto       ; evite les plantes en haut des falaises
@@ -38,6 +42,10 @@ Float lastPurgeTime = 0.0    ; temps de jeu (jours) de la derniere purge des pla
 
 NPCH_MainQuestScript Function Main()
 	Return GetOwningQuest() as NPCH_MainQuestScript
+EndFunction
+
+NPCH_FeaturesScript Function Feat()
+	Return GetOwningQuest() as NPCH_FeaturesScript
 EndFunction
 
 ; ---------------------------------------------------------------- boucle
@@ -82,6 +90,11 @@ Event OnUpdate()
 	EndIf
 	If handled < 0 && IsCurrent(myGen) && q.NPCH_Harvesting.GetValueInt() == 1
 		q.EndHarvestTravel() ; filet de securite : jamais de package de recolte actif hors tournee
+	EndIf
+	If IsCurrent(myGen) && !p.IsInCombat()
+		NPCH_FeaturesScript ft = Feat()
+		ft.TryWeatherComment()
+		ft.TryDailyLesson()
 	EndIf
 	If runningGen == myGen
 		runningGen = -1
@@ -131,19 +144,24 @@ Int Function RunBatch(NPCH_MainQuestScript q, Actor f, Actor p, Int myGen)
 	Float[] cx = new Float[128]
 	Float[] cy = new Float[128]
 	Float[] cz = new Float[128]
-	Int n = ScanCandidates(q, p, cand, cx, cy, cz)
+	Bool[] rare = new Bool[128]
+	Int n = ScanCandidates(q, p, cand, cx, cy, cz, rare)
 	If n == 0
 		Return -1
 	EndIf
 
-	; 2. chaine de plantes voisines (calcul pur, sans appel au moteur)
+	; 2. chaine de plantes voisines (calcul pur, sans appel au moteur). Une plante rare, si presente, ouvre la tournee.
 	Int[] order = new Int[128]
-	Int k = BuildChain(q, f, p, n, cx, cy, cz, order)
+	Int k = BuildChain(q, f, p, n, cx, cy, cz, rare, order)
 	If k == 0
 		Return -1
 	EndIf
-	q.DebugMsg("Tournee : " + k + " plante(s) (" + n + " candidates)")
-	React(f, q.TopicFoundPlant, q.NPCH_ReactionChance.GetValueInt())
+	q.DebugMsg("Tournee : " + k + " cible(s) (" + n + " candidates)")
+	If rare[order[0]]
+		Feat().AlertRare(cand[order[0]]) ; detour annonce : "Oh ! Nirnroot, par ici !"
+	Else
+		React(f, q.TopicFoundPlant, q.NPCH_ReactionChance.GetValueInt())
+	EndIf
 
 	; 3. execution : on garde le package de recolte actif et on change seulement de cible
 	Float startTime = Utility.GetCurrentRealTime()
@@ -201,7 +219,9 @@ EndFunction
 ; RESULT_UNREACHABLE (cible marquee visitee) ou RESULT_INTERRUPTED (rien n'est marque).
 Int Function HarvestOne(NPCH_MainQuestScript q, Actor f, Actor p, ObjectReference tgt, Int myGen)
 	Form base = tgt.GetBaseObject()
-	Bool isLoose = (base as Ingredient) != None
+	Bool isLoose = (base as Ingredient) != None   ; ingredient pose au sol
+	Bool isCorpse = (tgt as Actor) != None        ; creature morte
+	Bool isNirn = Feat().NirnrootActivators.HasForm(base) ; activateur scripte de Nirnroot (attention : Flora herite d'Activator)
 	If !IsCurrent(myGen)
 		Return RESULT_INTERRUPTED
 	EndIf
@@ -212,6 +232,11 @@ Int Function HarvestOne(NPCH_MainQuestScript q, Actor f, Actor p, ObjectReferenc
 		timeout = TimeoutMax
 	EndIf
 	Float waited = 0.0
+	; Detection de blocage : si elle ne se rapproche pas de la plante pendant StuckSeconds, petit saut de cote puis
+	; recalcul de l'itineraire. Apres MaxUnstickAttempts tentatives, la plante est abandonnee.
+	Int attempts = 0
+	Float bestDist = f.GetDistance(tgt)
+	Float stuckTime = 0.0
 	While f.GetDistance(tgt) > ReachDistance && waited < timeout
 		If !BatchMayContinue(q, f, p, myGen)
 			Return RESULT_INTERRUPTED
@@ -219,6 +244,29 @@ Int Function HarvestOne(NPCH_MainQuestScript q, Actor f, Actor p, ObjectReferenc
 		Utility.Wait(0.25)
 		If !f.IsInDialogueWithPlayer()
 			waited += 0.25 ; le temps passe a lui parler ne compte pas
+			Float d = f.GetDistance(tgt)
+			If d < bestDist - StuckProgress
+				bestDist = d
+				stuckTime = 0.0
+			Else
+				stuckTime += 0.25
+			EndIf
+			If stuckTime >= StuckSeconds && d > ReachDistance
+				attempts += 1
+				If attempts > MaxUnstickAttempts
+					waited = timeout ; abandon : traite comme injoignable juste apres
+				Else
+					q.DebugMsg("Bloquee (essai " + attempts + "/" + MaxUnstickAttempts + ") : " + base.GetName())
+					Unstick(f, tgt, attempts)
+					If !IsCurrent(myGen)
+						Return RESULT_INTERRUPTED
+					EndIf
+					q.BeginHarvestTravel(tgt) ; reaffecte la cible : le moteur recalcule l'itineraire depuis la nouvelle position
+					bestDist = f.GetDistance(tgt)
+					stuckTime = 0.0
+					waited = 0.0 ; chaque tentative a droit a son propre delai
+				EndIf
+			EndIf
 		EndIf
 	EndWhile
 	If !IsCurrent(myGen)
@@ -246,6 +294,15 @@ Int Function HarvestOne(NPCH_MainQuestScript q, Actor f, Actor p, ObjectReferenc
 		q.BagChest.AddItem(tgt, 1, True)
 		gained = 1
 		q.NotifyHarvest(base, 1)
+	ElseIf isCorpse
+		gained = Feat().LootCorpse(tgt)
+	ElseIf isNirn
+		; le script vanilla de la Nirnroot donne l'ingredient a l'acteur qui l'active (TriggerRef.AddItem) :
+		; Faelia l'active, l'ingredient arrive dans son inventaire et son alias le transfere dans la besace
+		q.BeginCapture(1)
+		tgt.Activate(f)
+		Utility.Wait(CaptureWait)
+		gained = q.EndCapture()
 	ElseIf q.NPCH_HarvestMethod.GetValueInt() == 0
 		q.BeginCapture(1)
 		tgt.Activate(f)
@@ -259,6 +316,8 @@ Int Function HarvestOne(NPCH_MainQuestScript q, Actor f, Actor p, ObjectReferenc
 	EndIf
 	If gained == 0
 		q.DebugMsg("Rien obtenu de " + base.GetName())
+	ElseIf !isLoose && !isCorpse
+		Feat().TryWeatherBonus(Feat().LastHarvested) ; +1 sous la pluie ou la nuit (selon les chances)
 	EndIf
 
 	If !isLoose
@@ -266,6 +325,33 @@ Int Function HarvestOne(NPCH_MainQuestScript q, Actor f, Actor p, ObjectReferenc
 	EndIf
 	Debug.SendAnimationEvent(f, "IdleForceDefaultState")
 	Return gained
+EndFunction
+
+; Petit saut pour changer de point de depart : essai 1 a gauche, essai 2 a droite, essai 3 en arriere
+; (perpendiculaire / oppose a la direction de la plante). Le moteur recalcule ensuite le chemin.
+Function Unstick(Actor f, ObjectReference tgt, Int aiAttempt)
+	Float dx = tgt.GetPositionX() - f.GetPositionX()
+	Float dy = tgt.GetPositionY() - f.GetPositionY()
+	Float len = Math.Sqrt(dx * dx + dy * dy)
+	If len < 1.0
+		len = 1.0
+	EndIf
+	dx = dx / len
+	dy = dy / len
+	Float ox = 0.0
+	Float oy = 0.0
+	If aiAttempt == 1
+		ox = -dy * UnstickStep
+		oy = dx * UnstickStep
+	ElseIf aiAttempt == 2
+		ox = dy * UnstickStep
+		oy = -dx * UnstickStep
+	Else
+		ox = -dx * UnstickStep * 1.5
+		oy = -dy * UnstickStep * 1.5
+	EndIf
+	f.MoveTo(f, ox, oy, 20.0, False)
+	Utility.Wait(0.3)
 EndFunction
 
 Event OnItemAdded(Form akBaseItem, Int aiItemCount, ObjectReference akItemReference, ObjectReference akSourceContainer)
@@ -278,33 +364,48 @@ EndEvent
 
 ; ---------------------------------------------------------------- scan et planification
 
-; Remplit les tableaux avec les plantes recoltables autour du joueur. Filtres du moins cher au plus cher.
-Int Function ScanCandidates(NPCH_MainQuestScript q, Actor p, ObjectReference[] cand, Float[] cx, Float[] cy, Float[] cz)
+; Remplit les tableaux avec les cibles recoltables autour du joueur. Filtres du moins cher au plus cher.
+; Passes : 0 plantes du catalogue, 1 ingredients au sol, 2 Nirnroot (activateurs), 3 creatures mortes.
+Int Function ScanCandidates(NPCH_MainQuestScript q, Actor p, ObjectReference[] cand, Float[] cx, Float[] cy, Float[] cz, Bool[] rare)
+	NPCH_FeaturesScript ft = Feat()
 	Float radius = q.NPCH_ScanRadius.GetValue()
 	If radius <= 0.0
 		radius = 1950.0
 	EndIf
-	; au-dela de cette distance du joueur, une plante ne peut pas faire partie d'une tournee : on ne la garde pas
-	; (evite de remplir les 128 places avec des plantes lointaines dans une foret tres dense)
+	; au-dela de cette distance du joueur, une cible ordinaire ne peut pas faire partie d'une tournee : on ne la garde pas
+	; (evite de remplir les 128 places avec des plantes lointaines). Les plantes rares sont gardees jusqu'au rayon de scan.
 	Float maxUseful = ClampPositive(q.NPCH_BatchStartDist.GetValue(), 1050.0) + ClampPositive(q.NPCH_BatchLinkDist.GetValue(), 500.0) * q.NPCH_BatchMaxPlants.GetValueInt()
+	Bool rareDetour = ft.NPCH_RareAlert.GetValueInt() == 1
 	Float pz = p.GetPositionZ()
 	Cell lastCell = None
 	Bool lastCellPrivate = False
 	Int n = 0
 	Int pass = 0
-	While pass < 2 && n < 128
+	; creatures mortes : ignorees si un filtre de recolte (cible / rares seulement) est actif
+	Bool corpsesOn = ft.NPCH_LootCorpses.GetValueInt() == 1 && ft.NPCH_TargetEffect.GetValueInt() == 0 && ft.NPCH_RareOnly.GetValueInt() == 0
+	While pass < 4 && n < 128
+		; Papyrus refuse d'affecter None a un tableau : on suit le nombre de resultats de CETTE passe a part
 		ObjectReference[] refs
+		Int refCount = 0
 		If pass == 0
-			refs = PO3_SKSEFunctions.FindAllReferencesOfType(p, q.HarvestableList, radius) ; plantes du catalogue
-		Else
-			refs = PO3_SKSEFunctions.FindAllReferencesOfFormType(p, 30, radius)             ; ingredients au sol
+			refs = PO3_SKSEFunctions.FindAllReferencesOfType(p, q.HarvestableList, radius)
+			refCount = refs.Length
+		ElseIf pass == 1
+			refs = PO3_SKSEFunctions.FindAllReferencesOfFormType(p, 30, radius)  ; ingredients au sol (type de la base)
+			refCount = refs.Length
+		ElseIf pass == 2
+			refs = PO3_SKSEFunctions.FindAllReferencesOfType(p, ft.NirnrootActivators, radius)
+			refCount = refs.Length
+		ElseIf corpsesOn
+			refs = PO3_SKSEFunctions.FindAllReferencesOfFormType(p, 43, radius)  ; acteurs (base NPC_), filtres : morts, creatures
+			refCount = refs.Length
 		EndIf
 		Int i = 0
-		While i < refs.Length && n < 128
+		While i < refCount && n < 128
 			ObjectReference r = refs[i]
 			If r && !StorageUtil.FormListHas(None, VisitedKey, r) && !PO3_SKSEFunctions.IsQuestItem(r) && !r.IsDisabled()
 				Float dp = p.GetDistance(r)
-				If dp >= PlayerExclusion && dp <= maxUseful
+				If dp >= PlayerExclusion
 					Float z = r.GetPositionZ()
 					Float dz = z - pz
 					If dz <= MaxHeightDiff && dz >= -MaxHeightDiff && !r.GetActorOwner() && !r.GetFactionOwner()
@@ -317,11 +418,24 @@ Int Function ScanCandidates(NPCH_MainQuestScript q, Actor p, ObjectReference[] c
 							EndIf
 						EndIf
 						If !lastCellPrivate
-							cand[n] = r
-							cx[n] = r.GetPositionX()
-							cy[n] = r.GetPositionY()
-							cz[n] = z
-							n += 1
+							Bool ok = False
+							Bool isRare = False
+							If pass == 3
+								ok = dp <= maxUseful && ft.IsLootableCorpse(r as Actor)
+							Else
+								Form base = r.GetBaseObject()
+								ok = ft.PassesFilters(base)
+								isRare = ok && rareDetour && ft.IsRare(base)
+								ok = ok && (isRare || dp <= maxUseful)
+							EndIf
+							If ok
+								cand[n] = r
+								cx[n] = r.GetPositionX()
+								cy[n] = r.GetPositionY()
+								cz[n] = z
+								rare[n] = isRare
+								n += 1
+							EndIf
 						EndIf
 					EndIf
 				EndIf
@@ -333,9 +447,10 @@ Int Function ScanCandidates(NPCH_MainQuestScript q, Actor p, ObjectReference[] c
 	Return n
 EndFunction
 
-; Chaine du plus proche voisin. Premiere plante : la plus proche de Faelia parmi celles a moins de
-; NPCH_BatchStartDist du joueur. Suivantes : la plus proche de la precedente, a moins de NPCH_BatchLinkDist.
-Int Function BuildChain(NPCH_MainQuestScript q, Actor f, Actor p, Int n, Float[] cx, Float[] cy, Float[] cz, Int[] order)
+; Chaine du plus proche voisin. Premiere cible : la plante rare la plus proche de Faelia s'il y en a une (detour),
+; sinon la plus proche de Faelia parmi celles a moins de NPCH_BatchStartDist du joueur.
+; Suivantes : la plus proche de la precedente, a moins de NPCH_BatchLinkDist.
+Int Function BuildChain(NPCH_MainQuestScript q, Actor f, Actor p, Int n, Float[] cx, Float[] cy, Float[] cz, Bool[] rare, Int[] order)
 	Float startDist = ClampPositive(q.NPCH_BatchStartDist.GetValue(), 1050.0)
 	Float link = ClampPositive(q.NPCH_BatchLinkDist.GetValue(), 500.0)
 	Int maxPlants = q.NPCH_BatchMaxPlants.GetValueInt()
@@ -353,9 +468,22 @@ Int Function BuildChain(NPCH_MainQuestScript q, Actor f, Actor p, Int n, Float[]
 
 	Int cur = -1
 	Float best = 1000000000000.0 ; Papyrus n'accepte pas la notation 1e12
-	Float start2 = startDist * startDist
 	Int i = 0
 	While i < n
+		If rare[i]
+			Float dr = Dist2(cx[i], cy[i], cz[i], fx, fy, fz)
+			If dr < best
+				best = dr
+				cur = i
+			EndIf
+		EndIf
+		i += 1
+	EndWhile
+
+	Bool haveRare = cur >= 0
+	Float start2 = startDist * startDist
+	i = 0
+	While i < n && !haveRare
 		If Dist2(cx[i], cy[i], cz[i], px, py, pz) <= start2
 			Float d2 = Dist2(cx[i], cy[i], cz[i], fx, fy, fz)
 			If d2 < best

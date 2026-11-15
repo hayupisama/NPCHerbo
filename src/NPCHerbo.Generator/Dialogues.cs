@@ -50,12 +50,7 @@ public sealed partial class PluginBuilder
         }
         AddTopLevel("NPCH_TopicUpgradeBag", "J'aimerais t'offrir un plus grand sac.", quest, npc, upgrade.ToArray());
 
-        // 4. Arrêter / reprendre la cueillette
-        AddTopLevel("NPCH_TopicHarvestToggle", "Arrête de cueillir pour l'instant.", quest, npc,
-            new Line("Arrête de cueillir pour l'instant.", "D'accord, je reste près de vous.", "Fragment_HarvestOff",
-                GlobalEquals(gHarvestEnabled, 1)),
-            new Line("Tu peux recommencer à cueillir.", "Avec plaisir ! J'ouvre l'œil.", "Fragment_HarvestOn",
-                GlobalEquals(gHarvestEnabled, 0)));
+        // 4. Arrêter / reprendre la cueillette : déplacé dans le sous-menu « Parlons de ta cueillette » (Features.cs)
     }
 
     /// <summary>Branche de premier niveau + son topic. Chaque réplique est réservée à Faelia.</summary>

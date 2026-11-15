@@ -39,7 +39,7 @@ public sealed partial class PluginBuilder
         var gFollowing = AddGlobalShort("NPCH_Following", 0);
         var gHarvestEnabled = AddGlobalShort("NPCH_HarvestEnabled", 1);
         var gHarvestMethod = AddGlobalShort("NPCH_HarvestMethod", 0);
-        var gDebug = AddGlobalShort("NPCH_Debug", 0);
+        var gDebug = AddGlobalShort("NPCH_Debug", 1);
         var gHarvesting = AddGlobalShort("NPCH_Harvesting", 0);
         var gShowHarvest = AddGlobalShort("NPCH_ShowHarvest", 1);
         // Réglages des tournées (modifiables en console : set NPCH_ScanRadius to 1200 ...).
@@ -407,6 +407,7 @@ public sealed partial class PluginBuilder
                 },
             },
         };
+        AddFeatures(quest, npc); // fonctionnalités v2 (Features.cs)
         _mod.Quests.Add(quest);
 
         _mod.ModHeader.Stats.NextFormID = _reg.Max + 1;
@@ -424,7 +425,7 @@ public sealed partial class PluginBuilder
         npc.ShortName = "Faelia";
         npc.Race.SetTo(Vanilla.WoodElfRace);
         npc.Voice.SetTo(Vanilla.FemaleYoungEager);
-        npc.Class.SetTo(Vanilla.ClassCitizen);
+        npc.Class.SetTo(Vanilla.ClassTrainerAlchemyExpert); // formatrice d'alchimie
         npc.DefaultOutfit.SetTo(Vanilla.HunterOutfit01);
         npc.Template.Clear();
         npc.Configuration.Flags = NpcConfiguration.Flag.Female | NpcConfiguration.Flag.Essential

@@ -24,6 +24,7 @@ Message Property MsgNoRoom Auto
 Message Property MsgUpgraded Auto       ; "Faelia a un nouveau sac : %.0f places."
 Float Property SpawnDistance = 300.0 Auto  ; apparition derriere le joueur (hors de son champ de vision)
 MiscObject Property Gold001 Auto
+NPCH_FeaturesScript Property Features Auto  ; fonctionnalites v2 (meme quete)
 
 GlobalVariable Property NPCH_Following Auto
 GlobalVariable Property NPCH_HarvestEnabled Auto
@@ -44,7 +45,7 @@ Bool Property FullWarned = False Auto Hidden
 
 ; Les valeurs des globales sont conservees dans la sauvegarde : un nouveau reglage par defaut
 ; doit etre applique par migration. Incrementer SETTINGS_VERSION et ajouter un palier dans MigrateSettings().
-Int Property SETTINGS_VERSION = 2 AutoReadOnly Hidden
+Int Property SETTINGS_VERSION = 3 AutoReadOnly Hidden
 Int settingsVersion = 0
 
 ; Capture des objets recus pendant une cueillette : 0 = aucune, 1 = inventaire de Faelia, 2 = inventaire du joueur
@@ -73,6 +74,9 @@ Function MigrateSettings()
 	EndIf
 	If settingsVersion < 2
 		NPCH_Debug.SetValueInt(0) ; fin des tests : plus de notifications de debug (le journal Papyrus reste complet)
+	EndIf
+	If settingsVersion < 3
+		NPCH_Debug.SetValueInt(1) ; demande utilisateur : logs a l'ecran actifs par defaut (desactivables dans les reglages)
 	EndIf
 	If settingsVersion != SETTINGS_VERSION
 		DebugMsg("Reglages migres : v" + settingsVersion + " -> v" + SETTINGS_VERSION)
@@ -348,6 +352,7 @@ Function NotifyHarvest(Form akItem, Int aiCount)
 	If NPCH_ShowHarvest.GetValueInt() == 1
 		Debug.Notification("Faelia : +" + aiCount + " " + akItem.GetName())
 	EndIf
+	Features.OnHarvested(akItem, aiCount) ; carnet de decouvertes, paliers de remplissage, dernier ingredient
 EndFunction
 
 ; ---------------------------------------------------------------- debug

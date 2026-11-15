@@ -23,6 +23,7 @@ Event OnItemAdded(Form akBaseItem, Int aiItemCount, ObjectReference akItemRefere
 	EndIf
 
 	q.NPCH_BagCount.Mod(aiItemCount)
+	(GetOwningQuest() as NPCH_FeaturesScript).CheckFillThreshold() ; paliers 50/75/90 %, compteur a jour
 
 	Int over = q.NPCH_BagCount.GetValueInt() - q.GetCapacity()
 	If over > aiItemCount

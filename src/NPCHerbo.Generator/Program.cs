@@ -23,6 +23,77 @@ if (args.Length > 0 && args[0] == "explore-voice")
     return 0;
 }
 
+if (args.Length > 1 && args[0] == "find")
+{
+    // dotnet run -- find <motif>... : enregistrements de Skyrim.esm dont l'EditorID contient un motif (+ nom FR, valeur)
+    using var esm = SkyrimMod.CreateFromBinaryOverlay(skyrimEsm, SkyrimRelease.SkyrimSE,
+        new Mutagen.Bethesda.Plugins.Binary.Parameters.BinaryReadParameters
+        { StringsParam = new Mutagen.Bethesda.Strings.StringsReadParameters { TargetLanguage = Mutagen.Bethesda.Strings.Language.French } });
+    foreach (var r in esm.EnumerateMajorRecords())
+        if (r.EditorID != null && args.Skip(1).Any(a => r.EditorID.Contains(a, StringComparison.OrdinalIgnoreCase)))
+        {
+            var extra = r switch
+            {
+                IIngredientGetter i => $"\"{i.Name?.String}\" valeur={i.Value}",
+                IMagicEffectGetter m => $"\"{m.Name?.String}\"",
+                IFloraGetter fl => $"\"{fl.Name?.String}\" ingr={fl.Ingredient.FormKey}",
+                _ => "",
+            };
+            Console.WriteLine($"{r.FormKey} {r.GetType().Name.Replace("BinaryOverlay", "")} {r.EditorID} {extra}");
+        }
+    return 0;
+}
+
+if (args.Length > 2 && args[0] == "bsa-list")
+{
+    // dotnet run -- bsa-list <archive.bsa> <motif> : fichiers d'une archive dont le chemin contient le motif
+    var reader = Mutagen.Bethesda.Archives.Archive.CreateReader(GameRelease.SkyrimSE, args[1]);
+    foreach (var f in reader.Files.Where(f => f.Path.Contains(args[2], StringComparison.OrdinalIgnoreCase)))
+        Console.WriteLine(f.Path);
+    return 0;
+}
+
+if (args.Length > 3 && args[0] == "bsa-extract")
+{
+    // dotnet run -- bsa-extract <archive.bsa> <motif> <dossier> : extrait les fichiers correspondants
+    var reader = Mutagen.Bethesda.Archives.Archive.CreateReader(GameRelease.SkyrimSE, args[1]);
+    foreach (var f in reader.Files.Where(f => f.Path.Contains(args[2], StringComparison.OrdinalIgnoreCase)))
+    {
+        var dest = Path.Combine(args[3], Path.GetFileName(f.Path));
+        Directory.CreateDirectory(args[3]);
+        File.WriteAllBytes(dest, f.GetBytes());
+        Console.WriteLine($"extrait : {dest}");
+    }
+    return 0;
+}
+
+if (args.Length > 1 && args[0] == "npcinfo")
+{
+    // dotnet run -- npcinfo <EditorID> : classe (formation), factions, et topics de sous-type Training
+    using var esm = SkyrimMod.CreateFromBinaryOverlay(skyrimEsm, SkyrimRelease.SkyrimSE,
+        new Mutagen.Bethesda.Plugins.Binary.Parameters.BinaryReadParameters
+        { StringsParam = new Mutagen.Bethesda.Strings.StringsReadParameters { TargetLanguage = Mutagen.Bethesda.Strings.Language.French } });
+    var n = esm.Npcs.First(x => x.EditorID == args[1]);
+    var cls = esm.Classes.First(c => c.FormKey == n.Class.FormKey);
+    Console.WriteLine($"{n.EditorID} classe={cls.EditorID} ({cls.FormKey}) teaches={cls.Teaches} maxTraining={cls.MaxTrainingLevel}");
+    foreach (var f in n.Factions)
+    {
+        var fac = esm.Factions.FirstOrDefault(x => x.FormKey == f.Faction.FormKey);
+        Console.WriteLine($"  faction {fac?.EditorID ?? f.Faction.FormKey.ToString()} rank={f.Rank} flags={fac?.Flags}");
+    }
+    var trainerFac = esm.Factions.First(x => x.EditorID == "JobTrainerFaction").FormKey;
+    Console.WriteLine($"JobTrainerFaction = {trainerFac}");
+    foreach (var t in esm.DialogTopics.Where(t => t.Responses.Any(i => i.Conditions.Any(c =>
+                 c.Data.EnumerateFormLinks().Any(l => l.FormKey == trainerFac)))))
+    {
+        Console.WriteLine($"TOPIC {t.EditorID} [{t.Subtype}] \"{t.Name?.String}\" branch={t.Branch.FormKey}");
+        foreach (var i in t.Responses.Take(3))
+            Console.WriteLine($"   INFO {i.FormKey.ID:X6} conds=" + string.Join(" & ", i.Conditions.Select(c => c.Data.GetType().Name.Replace("ConditionDataBinaryOverlay", "") + "(" +
+                string.Join(",", c.Data.EnumerateFormLinks().Select(l => l.FormKey.ID.ToString("X6"))) + ")")));
+    }
+    return 0;
+}
+
 if (args.Length > 1 && args[0] == "cells")
 {
     // dotnet run -- cells <motif>... : cellules intérieures vanilla dont l'EditorID contient un motif
@@ -89,6 +160,8 @@ if (args.Length > 1 && args[0] == "dialogues")
             foreach (var r in i.Responses) Console.WriteLine($"     -> \"{r.Text?.String}\"");
             Console.WriteLine($"     conds: {conds}");
             if (frag != null) Console.WriteLine($"     fragment: {frag.ScriptName}.{frag.FragmentName} scripts={string.Join(",", i.VirtualMachineAdapter!.Scripts.Select(s => s.Name))}");
+            if (i.LinkTo.Count > 0) Console.WriteLine($"     liens: {string.Join(",", i.LinkTo.Select(l => l.FormKey.ID.ToString("X6")))}");
+            if (i.Conditions.Any(c => c.Flags.HasFlag(Condition.Flag.OR))) Console.WriteLine("     (contient une condition OU)");
         }
     }
     return 0;
@@ -129,8 +202,23 @@ if (args.Length > 0 && args[0] == "build")
     if (root == null) throw new InvalidOperationException("Racine du projet introuvable (PLAN.md).");
     var registry = new FormIdRegistry(Path.Combine(root.FullName, "formids.json"));
 
-    var mod = new PluginBuilder(esm, registry).Build();
+    var builder = new PluginBuilder(esm, registry);
+    var mod = builder.Build();
     mod.WriteToBinary(outPath);
+
+    // Menu MCM (MCM Helper) : config JSON + traductions SkyUI (UTF-16 LE avec BOM, format attendu par le jeu)
+    var outDir = Path.GetDirectoryName(outPath)!;
+    if (builder.McmConfigJson != null)
+    {
+        var cfgDir = Path.Combine(outDir, "MCM", "Config", "NPCHerbo");
+        Directory.CreateDirectory(cfgDir);
+        File.WriteAllText(Path.Combine(cfgDir, "config.json"), builder.McmConfigJson, new System.Text.UTF8Encoding(false));
+        var trDir = Path.Combine(outDir, "Interface", "Translations");
+        Directory.CreateDirectory(trDir);
+        foreach (var lang in new[] { "FRENCH", "ENGLISH" })
+            File.WriteAllText(Path.Combine(trDir, $"NPCHerbo_{lang}.txt"), builder.McmTranslations!, new System.Text.UnicodeEncoding(false, true));
+        Console.WriteLine("MCM écrit : config.json + traductions");
+    }
     registry.Save();
 
     // SEQ : obligatoire pour qu'une quête « Start Game Enabled » puisse faire parler ses PNJ.

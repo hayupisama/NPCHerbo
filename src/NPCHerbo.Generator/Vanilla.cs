@@ -14,6 +14,8 @@ public static class Vanilla
     public static readonly FormKey WoodElfRace = K(0x013749);
     public static readonly FormKey FemaleYoungEager = K(0x013ADC);
     public static readonly FormKey ClassCitizen = K(0x01326B);
+    public static readonly FormKey ClassTrainerAlchemyExpert = K(0x0E3A6E); // formation en Alchimie jusqu'au niveau 75 (comme Arcadia)
+    public static readonly FormKey[] RareIngredients = { K(0x059B86), K(0x0B701A), K(0x01BCBC) }; // Nirnroot, Nirnroot cramoisie, racine de jarrin
     public static readonly FormKey HunterOutfit01 = K(0x106988);
     public static readonly FormKey FaceTemplate = K(0x10ABA7);       // WoodElfFemalePreset10
     public static readonly FormKey SatchelContainer = K(0x0AF265);   // FFI02ReydaSatchel (modele Satchel.nif)
